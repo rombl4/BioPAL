@@ -34,6 +34,9 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,num_bas=0):
 
     """
 
+    # inversion parameters
+    kh_vec, height_vec, coef_vec_mu = param_dict["kh_vec"], param_dict["height_vec"], param_dict["coef_vec_mu"]
+
     lut_kh_mu=np.copy(LUT)
     #polarimetric optimization (center of coherence region)
     #another option is min ground search: to be added as an otion later
@@ -62,7 +65,7 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,num_bas=0):
         ind = np.unravel_index(ind, lut_kh_mu.shape)
         hh2 = kh_vec[ind[0]]
         mu2 = coef_vec_mu[ind[1]]
-        dist= np.abs(lut_kh_mu[ind] - coh)
+        #dist= np.abs(lut_kh_mu[ind] - coh)
     except:
         print("error")
         hh2= np.nan
@@ -71,9 +74,9 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,num_bas=0):
     hh2 = hh2 / np.abs(kz[num_bas])
 
     #optonal: flagging low coherence values
-    # if np.abs(gammav0_tr[num_bas])<.25:
-    #     hh2= np.nan
-    #     mu2 = np.nan
+    if np.abs(gammav0_tr[num_bas])<.25:
+        hh2= np.nan
+        mu2 = np.nan
 
     out_dict = {"height": hh2, "mu": mu2}
 
@@ -123,10 +126,9 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,num_bas1=0,num_bas2=1)
 
     """
 
-
-    #load precalculated LUT
-    #lut_k_h_mu = np.load("/data/largeHome/guli_ro/python/fsar/regions/lope/test/lut_k_h_mu_lambda_res_raw[2, 2]res_[1, 1]filt_[17, 4]P.npy")
+    #inversion parameters
     k_vec,height_vec,coef_vec_mu,temp_vec = param_dict["k_vec"],param_dict["height_vec"],param_dict["coef_vec_mu"],param_dict["temp_vec"]
+
     #LUT with temporal decorrelation
     lut_k_h_mu_temp = np.einsum('abc,d->abcd', LUT, temp_vec)
 

@@ -364,7 +364,7 @@ def estimate_height(
 
 
     ### calculation of the LUT
-    num_baselines_key = "dual"
+    num_baselines_key = "single"
     if num_baselines_key == "single": LUT = calc_lut_kh_mu(profile, param_dict)
     if num_baselines_key == "dual": LUT = calc_lut_k_h_mu(profile, param_dict)
     ###
