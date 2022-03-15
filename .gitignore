@@ -9,3 +9,6 @@ doc/_build
 output/
 inputs/
 add_.py
+.idea
+.git
+

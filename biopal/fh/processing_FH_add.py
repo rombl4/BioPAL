@@ -39,19 +39,22 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,num_bas=0):
     #another option is min ground search: to be added as an otion later
     gammav0_tr = np.trace(PI,axis1=0,axis2=1)
 
-    #range decorrelation compensation
+    ###range decorrelation compensation
     rg_resolution= 30 # this is the bandwidth limited range resolution: should be recalculated for 6 MHz
     rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz)) * np.cos(offnadir)
     gammav0 = np.copy(gammav0_tr)
     gammav0 = gammav0 / rg_deco
+    ###
 
-    #optional: remove values of coherences larger than 1
+    ###optional: remove values of coherences larger than 1
     ind_more1=np.where(np.abs(gammav0)>1.)
     gammav0[ind_more1]=gammav0[ind_more1]/np.abs(gammav0[ind_more1])
     #gammav0[ind_more1] = 1.
+    ###
 
-    #selection of baseline
+    ###selection of baseline
     coh = gammav0[num_bas]
+    ###
 
     try:
         ind = np.nanargmin(np.abs(lut_kh_mu - coh))
@@ -68,9 +71,9 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,num_bas=0):
     hh2 = hh2 / np.abs(kz[num_bas])
 
     #optonal: flagging low coherence values
-    if np.abs(gammav0_tr[num_bas])<.25:
-        hh2= np.nan
-        mu2 = np.nan
+    # if np.abs(gammav0_tr[num_bas])<.25:
+    #     hh2= np.nan
+    #     mu2 = np.nan
 
     out_dict = {"height": hh2, "mu": mu2}
 
