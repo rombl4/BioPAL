@@ -511,6 +511,7 @@ class StackBasedProcessingFH(Task):
                         slope,
                     )
                 else:
+                    #roman comment: added inputs
                     (
                         estimated_height,
                         extinctionmap,
@@ -534,6 +535,9 @@ class StackBasedProcessingFH(Task):
                         raster_info.range_bandwidth_hz,
                         kz,
                         conf_params_obj.estimate_fh,
+                        R,
+                        off_nadir_angle_rad,
+                        slope,
                     )
 
                 estimated_height = estimated_height / np.cos(slope_filtered[rg_vec_subs, :][:, az_vec_subs])

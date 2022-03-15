@@ -6,3 +6,6 @@ build
 *.egg-info
 doc/_build
 .vscode
+output/
+inputs/
+add_.py
