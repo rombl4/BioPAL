@@ -519,6 +519,7 @@ class StackBasedProcessingFH(Task):
                         gammaT1map,
                         gammaT2map,
                         gammaT3map,
+                        biasmap,  # #rrgg add_output biasmap
                         kz,
                         rg_vec_subs,
                         az_vec_subs,
@@ -540,7 +541,11 @@ class StackBasedProcessingFH(Task):
                         slope,
                     )
 
-                estimated_height = estimated_height / np.cos(slope_filtered[rg_vec_subs, :][:, az_vec_subs])
+                #estimated_height = estimated_height / np.cos(slope_filtered[rg_vec_subs, :][:, az_vec_subs])
+                #estimated_height=np.angle(np.trace(MBMP_correlation[0:3,3:6,:,:],axis1=0,axis2=1))
+
+                #estimated_height = np.abs(np.trace(MBMP_correlation[0:3, 6:9, :, :]/3-1/3, axis1=0, axis2=1))
+                #estimated_height = kz[:,:,1]
                 logging.info("...done.\n")
 
             except Exception as e:

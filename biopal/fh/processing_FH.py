@@ -21,7 +21,9 @@ from biopal.fh.processing_FH_add import (
     do_calc_height_single_bas,
     do_calc_height_dual_bas,
     calc_lut_kh_mu,
-    calc_lut_k_h_mu,
+    set_param_dict,
+    profile_dependent_part,
+    error_model_kzh
 )
 ###
 
@@ -68,7 +70,7 @@ def volume_decorrelation_lut(num_baselines, vertical_wavenumber, model_parameter
     return LUT, extinctions
 
 
-def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_dict, num_baselines_key="dual"):
+def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_dict, biases,high_coherence_threshold,num_baselines_key="dual"):
     """This function returns forest height, extinction, ground to volume ratio,
        temporal decorrelations.
     """
@@ -115,9 +117,10 @@ def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_d
     ##roman begin
     elif num_baselines_key == "single":
 
-        out_dict = do_calc_height_single_bas(PI, kz, offnadir, LUT, param_dict)
+        out_dict = do_calc_height_single_bas(PI, kz, offnadir, LUT, param_dict,biases,high_coherence_threshold,calc_meth="line",rg_deco_flag=1)
         height = out_dict["height"]
         mu = out_dict["mu"]
+        bias=out_dict["bias"]
 
         output_height = height
         output_extinction = np.nan
@@ -134,6 +137,7 @@ def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_d
             output_gammaT1,
             output_gammaT2,
             output_gammaT3,
+            bias,
         ]
 
     elif num_baselines_key == "dual":
@@ -252,6 +256,7 @@ def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_d
             output_gammaT1,
             output_gammaT2,
             output_gammaT3,
+
         ]
 
     return output
@@ -329,6 +334,7 @@ def estimate_height(
     gammaT1map = np.zeros((Nrg_subs, Naz_subs))
     gammaT2map = np.zeros((Nrg_subs, Naz_subs))
     gammaT3map = np.zeros((Nrg_subs, Naz_subs))
+    biasmap = np.zeros((Nrg_subs, Naz_subs))
     vertical_wavenumber = np.zeros((Nrg_subs, Naz_subs, num_baselines))
 
     ### fixed profile: should be different for each scene. The one below is for Lope
@@ -349,25 +355,16 @@ def estimate_height(
     ###
 
 
+    #setting inversion parameters in a dictionary
+    param_dict=set_param_dict()
+    num_baselines_key="single"
 
-    ### setting inversion parameters in a dictionary
-    n_sample = 70
-    k_vec = np.linspace(0, .3, 50)
-    kh_vec = np.linspace(0, 2 * np.pi, 50)
-    height_vec = np.linspace(0, n_sample - 1, n_sample)
-    height_vec_norm = height_vec / (n_sample - 1)
-    coef_vec_mu = np.concatenate(([0], 10 ** np.linspace(-2, 1, 20)))
-    temp_decor_vec = np.linspace(0.7, 1.0, 7)
-    param_dict = {"k_vec": k_vec, "height_vec": height_vec, "height_vec_norm": height_vec_norm, "kh_vec": kh_vec,
-                  "coef_vec_mu": coef_vec_mu, "temp_vec": temp_decor_vec}
-    ###
+    #profile dependent function
+    profile,biases,high_coherence_threshold=profile_dependent_part(profile,param_dict)
 
+    #calculation of the LUT
+    LUT = calc_lut_kh_mu(profile, param_dict)
 
-    ### calculation of the LUT
-    num_baselines_key = "single"
-    if num_baselines_key == "single": LUT = calc_lut_kh_mu(profile, param_dict)
-    if num_baselines_key == "dual": LUT = calc_lut_k_h_mu(profile, param_dict)
-    ###
 
     Nrg_subs_string = str(Nrg_subs)
     for rg_sub_idx in np.arange(Nrg_subs):
@@ -417,7 +414,7 @@ def estimate_height(
             # select specifically algorithm: single or dual baseline
             output = estimate_height_core(PI, vertical_wavenumber[rg_sub_idx, az_sub_idx, :],
                                           look_angles1[rg_sub_idx, az_sub_idx], ground_slope[rg_sub_idx, az_sub_idx],
-                                          fh_proc_conf.model_parameters, LUT, param_dict,
+                                          fh_proc_conf.model_parameters, LUT, param_dict,biases,high_coherence_threshold,
                                           num_baselines_key=num_baselines_key)
 
             heightmap[rg_sub_idx, az_sub_idx] = output[0]
@@ -426,6 +423,7 @@ def estimate_height(
             gammaT1map[rg_sub_idx, az_sub_idx] = output[3]
             gammaT2map[rg_sub_idx, az_sub_idx] = output[4]
             gammaT3map[rg_sub_idx, az_sub_idx] = output[5]
+            biasmap[rg_sub_idx, az_sub_idx] = output[6]
 
     logging.info("   performing median filtering of height products...")
     heightmap = medfilt2d(heightmap, kernel_size=fh_proc_conf.median_factor)
@@ -443,6 +441,7 @@ def estimate_height(
         gammaT1map,
         gammaT2map,
         gammaT3map,
+        biasmap,
         vertical_wavenumber,
         rg_vec_subs,
         az_vec_subs,
