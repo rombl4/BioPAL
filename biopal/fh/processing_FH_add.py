@@ -167,10 +167,10 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,num_bas1=0,num_bas2=1)
     """
 
     #inversion parameters
-    k_vec,height_vec,coef_vec_mu,temp_vec = param_dict["k_vec"],param_dict["height_vec"],param_dict["coef_vec_mu"],param_dict["temp_vec"]
+    kh_vec,height_vec,coef_vec_mu,temp_vec = param_dict["kh_vec"],param_dict["height_vec"],param_dict["coef_vec_mu"],param_dict["temp_vec"]
 
     #LUT with temporal decorrelation
-    lut_k_h_mu_temp = np.einsum('abc,d->abcd', LUT, temp_vec)
+    lut_kh_mu_temp = np.einsum('ab,c->abcc', LUT, temp_vec)
 
 
     #polarimetric optimization
@@ -201,63 +201,29 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,num_bas1=0,num_bas2=1)
     kz1 = kz[num_bas1]
     kz2 = kz[num_bas2]
 
+    ident = np.ones((len(temp_vec)))
 
+    cost1= np.abs(lut_kh_mu_temp - coh_com1[ii])** 2
+    cost1 = np.einsum('abc,e->abce', cost1, ident)
 
+    cost2= np.abs(lut_kh_mu_temp - coh_com2[ii])** 2
+    cost2 = np.einsum('abc,e->abec', cost2, ident)
 
-    lut4d1[:, :, :, 0] = np.abs(lut_3d_psf - coh_com1[ii])
-    for kk in range(lut_3d_psf.shape[2]): lut4d1[:, :, :, kk] = lut4d1[:, :, :, 0]
+    #bringing the two costs to the same height reference (interpolation)
+    lut_kh_mu_temp1_temp1 = lut_kh_mu_temp2_temp2[round(kz1/kz2*kh_vec), :, :, :]
 
-    lut4d2[:, :, 0, :] = np.abs(lut_3d_psf - coh_com2[ii])
-    for kk in range(lut_3d_psf.shape[2]): lut4d2[:, :, kk, :] = lut4d2[:, :, 0, :]
-
-    h_vec1 = np.abs(kh_vec / kz1[ii])
-    h_vec2 = np.abs(kh_vec / kz2[ii])
-
-    lut4d1_interm = np.copy(lut4d1)
-    for kk in range(lut_3d_psf.shape[0]):
-        h_arg = np.argmin(np.abs(h_vec1 - h_vec2[kk]))
-        lut4d1[kk, :, :, :] = np.copy(lut4d1_interm[h_arg, :, :, :])
-
-    ind = np.nanargmin(np.abs(lut4d1) ** 2 + np.abs(lut4d2) ** 2)
-    # ind = np.nanargmin(np.abs(np.abs(lut_2d_psf) - np.abs(coh)))
+    #find minimum
+    ind = np.nanargmin(cost1+cost2)
     ind = np.unravel_index(ind, lut4d2.shape)
-    hh2[ii] = kh_vec[ind[0]]
-    mu2[ii] = coef_vec_mu[ind[1]]
-    temp1[ii] = temp_vec[ind[2]]
-    temp2[ii] = temp_vec[ind[3]]
-    # dist[ii]=np.abs(lut_2d_psf[ind] - coh)
-    # mumax[ii] = mumax1
-
-
-
-    #select closest kz value for 1st baseline
-    kz11 = np.argmin(np.abs(np.abs(kz1) - k_vec))
-    lut_h_mu_temp = np.copy(lut_k_h_mu_temp[kz11, :, :, :])
-    lut_h_mu_temp1_temp2_1 = np.zeros([lut_h_mu_temp.shape[rr] for rr in [0, 1, 2, 2]], dtype="complex64")
-    #abs distances for 1st baseline
-    lut_h_mu_temp1_temp2_1[:, :, :, 0] = np.abs(lut_h_mu_temp - coh_com1)
-    for kk in range(lut_h_mu_temp1_temp2_1.shape[2]): lut_h_mu_temp1_temp2_1[:, :, :, kk] = lut_h_mu_temp1_temp2_1[ :, :, :, 0]
-
-    # select closest kz value for 2nd baseline
-    kz22 = np.argmin(np.abs(np.abs(kz2) - k_vec))
-    lut_h_mu_temp = np.copy(lut_k_h_mu_temp[kz22, :, :, :])
-    lut_h_mu_temp1_temp2_2 = np.zeros([lut_h_mu_temp.shape[rr] for rr in [0, 1, 2, 2]], dtype="complex64")
-    #abs distances for 2nd baseline
-    lut_h_mu_temp1_temp2_2[:, :, 0, :] = np.abs(lut_h_mu_temp - coh_com2)
-    for kk in range(lut_h_mu_temp1_temp2_1.shape[2]): lut_h_mu_temp1_temp2_2[:, :, kk, :] = lut_h_mu_temp1_temp2_2[    :, :, 0, :]
-
-    #common cost function
-
-    hh2 = hh2 / np.abs(kz2)
-
-    ind = np.nanargmin(np.abs(lut_h_mu_temp1_temp2_1) ** 2 + np.abs(lut_h_mu_temp1_temp2_2) ** 2)
-    ind = np.unravel_index(ind, lut_h_mu_temp1_temp2_2.shape)
-    hh2 = height_vec[ind[0]]
-    mu2 = coef_vec_mu[ind[1]]
+    kh = kh_vec[ind[0]]
+    mu = coef_vec_mu[ind[1]]
     temp1 = temp_vec[ind[2]]
     temp2 = temp_vec[ind[3]]
 
-    out_dict = {"height": hh2, "mu": mu2, "t1": temp1, "t2": temp2}
+    height = kh / np.abs(kz2)
+
+
+    out_dict = {"height": height, "mu": mu, "t1": temp1, "t2": temp2}
 
     return out_dict
 
@@ -445,6 +411,7 @@ def error_model_kzh(profile,param_dict,calc_meth="coherence",decorrelation=.97):
     height_real = np.zeros(LUT[:,0].shape)
 
     for kh in range(len(kh_vec)):
+
 
 
         pi_mat = np.ones((3,3,3)) * LUT[kh,0] * decorrelation
