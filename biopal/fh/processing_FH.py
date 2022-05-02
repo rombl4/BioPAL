@@ -70,54 +70,16 @@ def volume_decorrelation_lut(num_baselines, vertical_wavenumber, model_parameter
     return LUT, extinctions
 
 
-def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_dict, biases,high_coherence_threshold,num_baselines_key="dual"):
+def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_dict, biases,high_coherence_threshold,num_baselines_key="dual",calc_meth="pols2"):
     """This function returns forest height, extinction, ground to volume ratio,
        temporal decorrelations.
     """
-    num_baselines = PI.shape[2]
-    Nh = model_parameters.maximum_height  # 61
-    Ns = model_parameters.number_of_extinction_value  # 51
-    heights = np.arange(Nh)  # heights    [m]
-    heights[0] = 0.1  # to avoid dividing by zero in zero extinction
-
-    if num_baselines_key == "":
-        # single baseline processing
-
-        PI = np.squeeze(PI)
-        gamma_v, mu, err_fro = get_Ground_and_Volume_components(PI, gamma_g=1, eps=1e-6)
-
-        distances = np.abs(LUT[:, :, 0] - gamma_v) ** 2
-        # distances to each (h, /sigma) pairs.
-
-        subscribe = np.argmin(distances)
-
-        # Pair of (h, /sigma) of the minimum distance.
-        hgt = int(subscribe / Ns)
-        ext = int(subscribe % Ns)
-
-        # Assigning the results.
-        output_height = heights[hgt]
-        output_extinction = extinctions[ext]
-        output_GVratio = mu
-
-        output_gammaT1 = np.nan
-        output_gammaT2 = np.nan
-        output_gammaT3 = np.nan
-
-        output = [
-            output_height,
-            output_extinction,
-            output_GVratio,
-            output_gammaT1,
-            output_gammaT2,
-            output_gammaT3,
-        ]
 
 
     ##roman begin
-    elif num_baselines_key == "single":
+    if num_baselines_key == "single":
 
-        out_dict = do_calc_height_single_bas(PI, kz, offnadir, LUT, param_dict,biases,high_coherence_threshold,calc_meth="line",rg_deco_flag=1)
+        out_dict = do_calc_height_single_bas(PI, kz, offnadir, LUT, param_dict,biases,high_coherence_threshold,num_bas=1,calc_meth=calc_meth,rg_deco_flag=1,error_model_flag=0)
         height = out_dict["height"]
         mu = out_dict["mu"]
         bias=out_dict["bias"]
@@ -141,9 +103,10 @@ def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_d
         ]
 
     elif num_baselines_key == "dual":
-        out_dict = do_calc_height_dual_bas(PI, kz, offnadir, LUT, param_dict)
+        out_dict = do_calc_height_dual_bas(PI, kz, offnadir, LUT, param_dict,biases,high_coherence_threshold,rg_deco_flag=1)
         height = out_dict["height"]
         mu = out_dict["mu"]
+        bias = out_dict["bias"]
 
         output_height = height
         output_extinction = np.nan
@@ -160,6 +123,7 @@ def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_d
             output_gammaT1,
             output_gammaT2,
             output_gammaT3,
+            bias,
         ]
     ##roman end
 
@@ -357,10 +321,12 @@ def estimate_height(
 
     #setting inversion parameters in a dictionary
     param_dict=set_param_dict()
-    num_baselines_key="single"
+    num_baselines_key="single"#"dual"#
+    calc_meth="coherence"#"line"#"pols2"
 
     #profile dependent function
-    profile,biases,high_coherence_threshold=profile_dependent_part(profile,param_dict)
+    gauss_flag=0
+    profile,biases,high_coherence_threshold=profile_dependent_part(profile,param_dict,gauss_flag)
 
     #calculation of the LUT
     LUT = calc_lut_kh_mu(profile, param_dict)
@@ -415,7 +381,7 @@ def estimate_height(
             output = estimate_height_core(PI, vertical_wavenumber[rg_sub_idx, az_sub_idx, :],
                                           look_angles1[rg_sub_idx, az_sub_idx], ground_slope[rg_sub_idx, az_sub_idx],
                                           fh_proc_conf.model_parameters, LUT, param_dict,biases,high_coherence_threshold,
-                                          num_baselines_key=num_baselines_key)
+                                          num_baselines_key=num_baselines_key,calc_meth=calc_meth)
 
             heightmap[rg_sub_idx, az_sub_idx] = output[0]
             extinctionmap[rg_sub_idx, az_sub_idx] = output[1]
@@ -432,6 +398,7 @@ def estimate_height(
     gammaT1map = medfilt2d(gammaT1map, kernel_size=fh_proc_conf.median_factor)
     gammaT2map = medfilt2d(gammaT2map, kernel_size=fh_proc_conf.median_factor)
     gammaT3map = medfilt2d(gammaT3map, kernel_size=fh_proc_conf.median_factor)
+    gammaT3map = medfilt2d(biasmap, kernel_size=fh_proc_conf.median_factor)
     logging.info("    ...done.")
 
     return (
