@@ -2,7 +2,7 @@ import numpy as np
 from numpy import linalg as LA
 
 
-def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_threshold,num_bas=1,calc_meth="line",rg_deco_flag=1,error_model_flag=0):
+def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,flags_dict,biases,high_coherence_threshold,num_bas=1,calc_meth="line",error_model_flag=0):
     """this function calculates FH from single baseline
 
     Parameters
@@ -49,31 +49,34 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
     #polarimetric optimization (center of coherence region)
     gammav0_tr = np.trace(PI,axis1=0,axis2=1)/3
 
-    coh_opt_flag=1
-    min_ground_flag=0
 
-    if coh_opt_flag:
+
+    if  flags_dict["coh_opt_flag"]:
         N_ch = PI.shape[0]
         num_baselines = PI.shape[2]
         I = np.eye(N_ch)  # Identity matrix
         gammav0 = np.zeros(num_baselines, dtype=np.complex64)
         for j in np.arange(num_baselines):
             P = np.copy(PI[:, :, j])
-            if min_ground_flag: P = PI[:, :, j] - I # The furthest point from the ground position is found.
+            if flags_dict["min_ground_flag"]: P = PI[:, :, j] - I # The furthest point from the ground position is found.
             B = P @ np.conjugate(np.transpose(P))
             w, U = LA.eig(B)
             max_index = np.argmax(w, axis=0)  #find max eigenvalue
             w = U[:, max_index].reshape((1, N_ch))
             gammav0[j] = np.conjugate(w) @ P @ np.transpose(w)
-            if min_ground_flag: gammav0[j] = gammav0[j] + 1.0
+            if flags_dict["min_ground_flag"]: gammav0[j] = gammav0[j] + 1.0
+
 
     else:
+        gammav0 = np.copy(gammav0_tr)
+
+    if error_model_flag:
         gammav0 = np.copy(gammav0_tr)
 
     ###range decorrelation compensation
     rg_resolution= 30 # this is the bandwidth limited range resolution: should be recalculated for 6 MHz
     rg_deco=1
-    if rg_deco_flag:  rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz)) * np.cos(offnadir)
+    if  ((flags_dict["rg_deco_flag"]) &  error_model_flag==0):  rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz)) * np.cos(offnadir)
     gammav0 = gammav0 / rg_deco
     ###
 
@@ -91,7 +94,7 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
     ###selection of baseline
     coh = gammav0[num_bas]
     ###
-    if calc_meth == "mu":
+    if flags_dict["calc_meth"] == "mu":
         try:
             ind = np.nanargmin(np.abs(lut_kh_mu - coh))
             ind = np.unravel_index(ind, lut_kh_mu.shape)
@@ -105,7 +108,7 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
             mu = np.nan
             bias = np.nan
 
-    if calc_meth == "line":
+    if flags_dict["calc_meth"] == "line":
 
         tangens = np.arctan((1-np.real(coh))/np.imag(coh))
         lut = np.copy(lut_kh_mu[:, 0])
@@ -124,13 +127,13 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
             mu = np.nan
             bias =  np.nan
 
-    if calc_meth == "coherence":
+    if flags_dict["calc_meth"] == "coherence":
         ind = np.nanargmin(np.abs(np.abs(lut_kh_mu[:, 0]) - np.abs(coh)))
         height = kh_vec[ind]
         mu = np.nan
         bias = biases[ind]
 
-    if calc_meth == "pols2":
+    if flags_dict["calc_meth"] == "pols2":
 
         #it is generally a different approach - uses 4d lut inversion - this method is added to match atbd but rather unlikely applicable for the L2 product
 
@@ -142,7 +145,7 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
         ###range decorrelation compensation
         rg_resolution = 30  # this is the bandwidth limited range resolution: should be recalculated for 6 MHz
         rg_deco = 1
-        if rg_deco_flag:  rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz1)) * np.cos(offnadir)
+        if  ((flags_dict["rg_deco_flag"]) &  error_model_flag==0):  rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz1)) * np.cos(offnadir)
         coh1,coh2 = coh1 / rg_deco,  coh2 / rg_deco
         ###
 
@@ -177,7 +180,7 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
         temp1 = temp_vec[ind[3]]
         bias = biases[ind[0]]
 
-    if ~error_model_flag: height = height / np.abs(kz[num_bas])
+    if error_model_flag==0: height = height / np.abs(kz[num_bas])
 
     #optonal: flagging low coherence values
     # if np.abs(gammav0_tr[num_bas])<.25:
@@ -185,10 +188,8 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
     #     mu = np.nan
 
     #high coherence values
-    #print   (     high_coherence_threshold,np.abs(gammav0_tr)     )
     if (np.abs(coh) > high_coherence_threshold):
-        height= np.nan
-        mu = np.nan
+        bias= np.nan
 
     out_dict = {"height": height, "mu": mu, "bias": bias}
 
@@ -198,7 +199,7 @@ def do_calc_height_single_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherenc
 
 
 
-def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_threshold,num_bas1=0,num_bas2=1,rg_deco_flag=1):
+def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,flags_dict,biases,high_coherence_threshold,num_bas1=0,num_bas2=1):
     """this function calculates FH from single baseline
 
     Parameters
@@ -240,7 +241,6 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_
     #LUT with temporal decorrelation
     lut_kh_mu_temp = np.einsum('ab,c->abc', LUT, temp_vec)
 
-
     #polarimetric optimization
     #another option is min ground search: to be added as an otion later
     gammav0_tr = np.trace(PI,axis1=0,axis2=1)/3
@@ -248,10 +248,9 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_
 
 
 
-    coh_opt_flag=1
-    min_ground_flag=0
 
-    if coh_opt_flag:
+
+    if  flags_dict["coh_opt_flag"]:
         # The furthest point from the ground position is found.
         N_ch = PI.shape[0]
         num_baselines = PI.shape[2]
@@ -260,19 +259,19 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_
         gammav0 = np.zeros(num_baselines, dtype=np.complex64)
         for j in np.arange(num_baselines):
             P = np.copy(PI[:, :, j])
-            if min_ground_flag: P = PI[:, :, j] - I
+            if flags_dict["min_ground_flag"]: P = PI[:, :, j] - I
             B = P @ np.conjugate(np.transpose(P))
             w, U = LA.eig(B)
             max_index = np.argmax(w, axis=0)
             w = U[:, max_index].reshape((1, N_ch))
             gammav0[j] = np.conjugate(w) @ P @ np.transpose(w)
-            if min_ground_flag: gammav0[j] = gammav0[j] + 1.0
+            if flags_dict["min_ground_flag"]: gammav0[j] = gammav0[j] + 1.0
 
 
     ### range decorrelation compensation
     rg_resolution = 30  # this is the bandwidth limited range resolution: should be recalculated for 6 MHz
     rg_deco=1
-    if rg_deco_flag: rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz)) * np.cos(offnadir)
+    if  ((flags_dict["rg_deco_flag"])): rg_deco = 1 - np.abs(rg_resolution / (2 * np.pi / kz)) * np.cos(offnadir)
 
     gammav0 = gammav0 / rg_deco
     ###
@@ -318,12 +317,10 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_
 
     height = kh / np.abs(kz2)
 
-    #optional
-    high_coherence_threshold_flag=0
-    if high_coherence_threshold_flag:
+    #flag in the bias
+    if flags_dict["high_coherence_threshold_flag"]:
         if ((np.abs(coh1) > high_coherence_threshold ) | (np.abs(coh2) > high_coherence_threshold ) ):
-            height= np.nan
-            mu = np.nan
+            bias= np.nan
 
     out_dict = {"height": height, "mu": mu, "t1": temp1, "t2": temp2, "bias": bias}
 
@@ -338,28 +335,86 @@ def do_calc_height_dual_bas(PI,kz,offnadir,LUT,param_dict,biases,high_coherence_
 
 def calc_lut_kh_mu(profile,param_dict):
 
+    """this function calculates 2D LUT of complex coherences for each of the values of Kz*H and Mu for the given profile
+
+    Parameters
+    ----------
+
+
+    profile: float array
+        profile (all positive real values)
+
+    param_dict: dict
+
+
+    Returns
+    -------
+    out_dict: 2d array
+        2D LUT
+
+
+    Notes
+    -----
+
+    Author : Roman Guliaev
+    Date : Mar 2022
+
+    """
+
+    #parameters for LUT
     kh_vec,  coef_vec_mu,height_vec_norm = param_dict["kh_vec"],  param_dict["coef_vec_mu"], param_dict["height_vec_norm"]
+
+    master_profile = np.copy(profile)
 
     lut = np.ndarray((len(kh_vec),len(coef_vec_mu)),dtype="complex64")
     for kh in range(len(kh_vec)):
         for mu in range(len(coef_vec_mu)):
-            master_profile = np.copy(profile)
-            master_profile[0] = master_profile[0]+np.sum(master_profile)*coef_vec_mu[mu]
-            kh_current = kh_vec[kh]
-            exp_kz = np.exp(1j * kh_current * height_vec_norm)
-            lut[kh,mu] = (np.sum(exp_kz * master_profile)) / np.abs(np.sum(master_profile))
+            exp_kz = np.exp(1j * kh_vec[kh] * height_vec_norm)  #vector of complex exponentials for a given KzH
+            gamma_v = (np.sum(exp_kz * master_profile)) / np.abs(np.sum(master_profile)) #calculating volume only coherence
+            lut[kh, mu] = (gamma_v+coef_vec_mu[mu])/(1+coef_vec_mu[mu]) #volumetric coherence with ground component
     return lut
 
 
 
 
 
-def error_model_kzh(profile,param_dict,calc_meth="line",decorrelation=.97):
+def error_model_kzh(profile,param_dict,flags_dict,decorrelation=.97):
+
+
+    """this function calculates 1D LUT of biases for each value of KzH
+
+    Parameters
+    ----------
+
+
+    profile: float array
+        profile (all positive real values)
+
+    param_dict: dict
+
+    decorrelation: float
+        level of assumed non-comensated decorrelation
+
+
+    Returns
+    -------
+    height_real: 1d array
+        vector of KzH from 0 to 2pi
+    height_inverted:   1d array
+        vector of inverted KzH assuming decorrelation
+
+
+    Notes
+    -----
+
+    Author : Roman Guliaev
+    Date : May 2022
+
+    """
 
     kh_vec = param_dict["kh_vec"]
     LUT=calc_lut_kh_mu(profile, param_dict)
-    height_inverted=np.zeros(LUT[:,0].shape)
-    height_real = np.zeros(LUT[:,0].shape)
+    height_inverted,height_real=np.zeros(LUT[:,0].shape),np.zeros(LUT[:,0].shape)
 
     for kh in range(len(kh_vec)):
 
@@ -369,9 +424,10 @@ def error_model_kzh(profile,param_dict,calc_meth="line",decorrelation=.97):
         pi_mat = np.ones((3,3,3)) * LUT[kh,0] * decorrelation
         kh_current = kh_vec[kh]
 
-        offnadir=.7
-        result_dict = do_calc_height_single_bas(pi_mat, [np.nan,np.nan,np.nan], np.nan, LUT, param_dict, kh_vec*np.nan,1,num_bas=0,calc_meth=calc_meth,rg_deco_flag=0,error_model_flag=1)
+        #calcluating result for the given decorrelation level
+        result_dict = do_calc_height_single_bas(pi_mat, [np.nan,np.nan,np.nan], np.nan, LUT, param_dict, flags_dict,kh_vec*np.nan,1,num_bas=0,calc_meth="line",error_model_flag=1)
 
+        #original and inverted heights
         height_inverted[kh] = result_dict["height"]
         height_real[kh] =  kh_vec[kh]
 
@@ -380,18 +436,14 @@ def error_model_kzh(profile,param_dict,calc_meth="line",decorrelation=.97):
 
 
 
-def profile_dependent_part(profile,param_dict,gauss_flag=0):
+def profile_dependent_part(profile,param_dict,flags_dict):
 
 
     """this function updates the profile with Gauss fit and calculates profile dependent paramteters: biases vector and coherence threshold for error model
 
-
-
     Parameters
 
     ----------
-
-
 
 
 
@@ -402,6 +454,7 @@ def profile_dependent_part(profile,param_dict,gauss_flag=0):
 
     param_dict: dictionary
 
+    flags_dict: dictionary
 
 
 
@@ -409,9 +462,12 @@ def profile_dependent_part(profile,param_dict,gauss_flag=0):
 
     -------
 
-    profile: updated Gasuss fitted profile
-    biases: bias for every value of kz*H, is unique for a given profile
-    high_coherence_threshold: threshold for flagging high coherence values
+    profile: array
+        updated Gasuss fitted profile same dimension as original profile
+    biases:
+        bias for every value of kz*H, is unique for a given profile
+    high_coherence_threshold:
+        threshold for flagging high coherence values
 
 
     Notes
@@ -420,7 +476,7 @@ def profile_dependent_part(profile,param_dict,gauss_flag=0):
 
     Author : Roman Guliaev
 
-    Date : Feb 2022
+    Date : May 2022
 
     """
 
@@ -432,7 +488,7 @@ def profile_dependent_part(profile,param_dict,gauss_flag=0):
     ###gauss_fit
     num_el=len(profile)
 
-    if gauss_flag:
+    if  flags_dict["gauss_flag"]:
         min_el=np.argmin(profile)
         profile=profile[min_el::]
         profile=profile-np.min(profile)
@@ -456,7 +512,7 @@ def profile_dependent_part(profile,param_dict,gauss_flag=0):
 
 
     #error model paramters calculation
-    height_real, height_inverted = error_model_kzh(profile, param_dict, calc_meth="line", decorrelation=.97)
+    height_real, height_inverted = error_model_kzh(profile, param_dict, flags_dict, decorrelation=.97)
 
     #find minimum for coherence threshold
     ind=np.argmin(height_inverted)
@@ -472,14 +528,16 @@ def profile_dependent_part(profile,param_dict,gauss_flag=0):
 def set_param_dict():
 
     n_sample = 70
-
-    kh_vec = np.linspace(0, 2 * np.pi, 200)
+    kh_vec_num=int(2 * np.pi/0.05) #sensitivity of 1 m for smaller Kz value of 0.05
+    kh_vec = np.linspace(0, 2 * np.pi, kh_vec_num)
     height_vec = np.linspace(0, n_sample - 1, n_sample)
     height_vec_norm = height_vec / (n_sample - 1)
-    #G/V ratio sampling tbd
-    coef_vec_mu = np.concatenate(([0], 10 ** np.linspace(-2, 1, 20)))
-    #temp decor sampling tbd
-    temp_decor_vec = np.linspace(0.7, 1.0, 7)
+
+    #G/V ratio, sampled uniformally on complex plane
+    mu_space=np.linspace(0.01, .99, 20)
+    coef_vec_mu = np.concatenate(([0], (1-mu_space)/mu_space))
+    #temp decor sampling: lowest possible is set to 0.3, highest is 1.0
+    temp_decor_vec = np.linspace(0.3, 1.0, 20)
     param_dict = { "height_vec_norm": height_vec_norm, "kh_vec": kh_vec,  "coef_vec_mu": coef_vec_mu, "temp_vec": temp_decor_vec}
 
     return param_dict

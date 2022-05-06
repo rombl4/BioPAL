@@ -70,16 +70,70 @@ def volume_decorrelation_lut(num_baselines, vertical_wavenumber, model_parameter
     return LUT, extinctions
 
 
-def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_dict, biases,high_coherence_threshold,num_baselines_key="dual",calc_meth="pols2"):
+def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_dict,flags_dict, biases,high_coherence_threshold,num_baselines_key="dual"):
     """This function returns forest height, extinction, ground to volume ratio,
        temporal decorrelations.
     """
 
+    """
+    Parameters
+    ----------
 
-    ##roman begin
+
+    PI: complex array 3x3*3: num_pol*num_pol*num_bas
+        PI matrix for 3 baselines
+
+    kz: float
+        kz baseline
+
+    offnadir: float
+        off nadir angle
+    slope: float
+        surface slope angle
+    
+    LUT: 2d array
+        look up table for kh (height*kz) and mu (G/V ratio)
+        
+    param_dict: dictionary
+        parameters for the inversion
+        param_dict = { "height_vec_norm": , "kh_vec": ,  "coef_vec_mu": , "temp_vec": }
+    
+    flags_dict: idct
+    
+    biases: float array
+        pre calculated biases from error model
+
+    high_coherence_threshold: int
+        thresholding the high coherence values and preparing a mask (ambiguous estimation) . 
+        the thresholded values are reflected in bias map with nan values
+  
+    num_baselines_key: str
+        "dual" or "single" 
+        "dual" is default 
+    
+    calc_meth: str
+        "line", "mu", "coherence" or "pols2"
+        "line" is default
+
+
+
+    Returns
+    -------
+    output: list
+           output_height,
+            output_extinction,
+            output_GVratio,
+            output_gammaT1,
+            output_gammaT2,
+            output_gammaT3,
+            bias,
+    """
+
+
+
     if num_baselines_key == "single":
 
-        out_dict = do_calc_height_single_bas(PI, kz, offnadir, LUT, param_dict,biases,high_coherence_threshold,num_bas=1,calc_meth=calc_meth,rg_deco_flag=1,error_model_flag=0)
+        out_dict = do_calc_height_single_bas(PI, kz, offnadir, LUT, param_dict,flags_dict,biases,high_coherence_threshold,num_bas=1,calc_meth=flags_dict["calc_meth"],error_model_flag=0)
         height = out_dict["height"]
         mu = out_dict["mu"]
         bias=out_dict["bias"]
@@ -103,7 +157,7 @@ def estimate_height_core(PI, kz, offnadir, slope, model_parameters, LUT, param_d
         ]
 
     elif num_baselines_key == "dual":
-        out_dict = do_calc_height_dual_bas(PI, kz, offnadir, LUT, param_dict,biases,high_coherence_threshold,rg_deco_flag=1)
+        out_dict = do_calc_height_dual_bas(PI, kz, offnadir, LUT, param_dict, flags_dict, biases,high_coherence_threshold)
         height = out_dict["height"]
         mu = out_dict["mu"]
         bias = out_dict["bias"]
@@ -321,12 +375,22 @@ def estimate_height(
 
     #setting inversion parameters in a dictionary
     param_dict=set_param_dict()
-    num_baselines_key="single"#"dual"#
-    calc_meth="coherence"#"line"#"pols2"
+
+
+    """
+    default flags:
+    num_baselines_key="dual"   #"single"#    number of baselines for the inversion
+    calc_meth="line"           # "mu"  #"coherence"#"pols2"  # inversion method 
+    rg_deco_flag = 1           #appying range decorrelation
+    gauss_flag=0               #no fitting the tomo profile with a gaussian
+    coh_opt_flag=0             #no search for maximum eigenvalue of pi matrix
+    min_ground_flag=0          #no search for minimum ground
+    """
+
+    flags_dict={"num_baselines_key": "dual" ,"calc_meth": "line" ,"rg_deco_flag": 1 ,"gauss_flag": 0,"coh_opt_flag": 0,"min_ground_flag": 0,"high_coherence_threshold_flag":1}
 
     #profile dependent function
-    gauss_flag=0
-    profile,biases,high_coherence_threshold=profile_dependent_part(profile,param_dict,gauss_flag)
+    profile,biases,high_coherence_threshold=profile_dependent_part(profile,param_dict,flags_dict)
 
     #calculation of the LUT
     LUT = calc_lut_kh_mu(profile, param_dict)
@@ -375,13 +439,12 @@ def estimate_height(
 
             new_k = list(look_angles.keys())[0]
             look_angles1 = look_angles[new_k]
-            # changed:
-            # input offnadir angles
-            # select specifically algorithm: single or dual baseline
+
+
             output = estimate_height_core(PI, vertical_wavenumber[rg_sub_idx, az_sub_idx, :],
                                           look_angles1[rg_sub_idx, az_sub_idx], ground_slope[rg_sub_idx, az_sub_idx],
-                                          fh_proc_conf.model_parameters, LUT, param_dict,biases,high_coherence_threshold,
-                                          num_baselines_key=num_baselines_key,calc_meth=calc_meth)
+                                          fh_proc_conf.model_parameters, LUT, param_dict,flags_dict,biases,high_coherence_threshold,
+                                          num_baselines_key=flags_dict["num_baselines_key"])
 
             heightmap[rg_sub_idx, az_sub_idx] = output[0]
             extinctionmap[rg_sub_idx, az_sub_idx] = output[1]
